@@ -1,0 +1,21 @@
+<html>
+<head>
+    <title>ACC Hotlap Leaderboards</title>
+</head>
+<body>
+    {% for (track, laps) in display_data %}
+        <h1>{{ track }}</h1>
+        <table>
+            <tr>
+                <th>Driver</th>
+                <th>Time</th>
+            </tr>
+            {% for (driver, bestlap) in laps %}
+                <tr>
+                    <td>{{ driver }}</td>
+                    <td>{{ bestlap }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% endfor %}
+</body>

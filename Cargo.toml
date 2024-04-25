@@ -1,0 +1,19 @@
+[package]
+name = "acc_hotlap_boards"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.82"
+askama = "0.12.1"
+askama_axum = "0.4.0"
+axum = "0.7.5"
+chrono = "0.4.38"
+itertools = "0.12.1"
+serde = { version = "1.0.198", features = ["derive"] }
+serde_json = "1.0.116"
+serde_with = "3.7.0"
+sqlx = { version = "0.7.4", features = ["sqlite"] }
+tokio = { version = "1.37.0", features = ["rt-multi-thread"] }
