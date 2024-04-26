@@ -4,11 +4,15 @@
         <meta charset="utf-8">
         <title>Offline Racing ACC compo stats</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <style type="text/css">
 body {
     margin-top:20px;
-    background:#eee;
+    background:#ccc;
 }
 .card {
     box-shadow: 0 20px 27px 0 rgb(0 0 0 / 5%);
@@ -29,10 +33,19 @@ table th {
     font-weight: 600;
     background-color: #eeecfd !important;
 }
+
         </style>
         <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
     </head>
     <body>
+        <!-- header image above it all -->
+        <div class="container">
+            <div class="row">
+                <div class="col-12">
+                    <img src="static/header_logo.png" class="img-fluid header-img" alt="header">
+                </div>
+            </div>
+        </div>
         {% for (track, lines) in display_data %}
         <div class="container">
             <div class="row">

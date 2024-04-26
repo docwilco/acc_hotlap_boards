@@ -447,7 +447,7 @@ async fn root() -> impl IntoResponse {
                         .iter()
                         .map(|split| format_duration(*split))
                         .collect::<Vec<_>>()
-                        .join(" ");
+                        .join(" | ");
                     DisplayLine {
                         player_id: driver,
                         position: position + 1,
