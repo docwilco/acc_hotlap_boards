@@ -5,9 +5,19 @@
         <title>Offline Racing ACC compo stats</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
-        <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
-        <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
-        <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/static/favicon-32x32.png"
+        >
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/static/favicon-16x16.png"
+        >
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <style type="text/css">
 body {
@@ -33,7 +43,9 @@ table th {
     font-weight: 600;
     background-color: #eeecfd !important;
 }
-
+.flag {
+    height: 1em;
+}
         </style>
         <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
     </head>
@@ -73,12 +85,14 @@ table th {
                                 <tbody>
                                     {% for line in lines %}
                                     <tr class="align-middle">
-                                        <td>{{ line.position }}</td>
+                                        <td>{{ loop.index }}</td>
                                         <td>
                                             <div class="d-flex align-items-center">
                                                 <img src="static/{{ line.player_id }}.png" class="avatar sm rounded-pill me-3 flex-shrink-0">
                                                 <div>
-                                                    <div class="h6 mb-0 lh-1">{{ line.name }}</div>
+                                                    <div class="h6 mb-0 lh-1">{{ line.name }}
+                                                        <img class="flag" src="/static/flags/4x3/{{ line.flag_code }}.svg" alt="{{ line.flag_name }}">
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>

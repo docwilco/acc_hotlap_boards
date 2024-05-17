@@ -9,13 +9,17 @@ edition = "2021"
 anyhow = "1.0.82"
 askama = "0.12.1"
 askama_axum = "0.4.0"
-axum = "0.7.5"
+async-watcher = "0.2.1"
+axum = { version = "0.7.5", features = ["macros"] }
 chrono = "0.4.38"
+dotenvy = "0.15.7"
+env_logger = "0.11.3"
 itertools = "0.12.1"
+log = "0.4.21"
 phf = { version = "0.11.2", features = ["macros"] }
 serde = { version = "1.0.198", features = ["derive"] }
 serde_json = "1.0.116"
 serde_with = "3.7.0"
-sqlx = { version = "0.7.4", features = ["sqlite"] }
+sqlx = { version = "0.7.4", features = ["sqlite", "runtime-tokio"] }
 tokio = { version = "1.37.0", features = ["rt-multi-thread"] }
 tower-http = { version = "0.5.2", features = ["fs"] }
