@@ -37,19 +37,19 @@ CREATE INDEX cars_session_id_idx ON cars(session_id);
 
 CREATE TABLE laps (
     id INTEGER PRIMARY KEY NOT NULL,
-    player_id INTEGER NOT NULL,
+    steam_id INTEGER NOT NULL,
     session_id INTEGER NOT NULL,
     car_id INTEGER NOT NULL,
     time_ms INTEGER NOT NULL,
     valid INTEGER NOT NULL,
-    FOREIGN KEY (player_id) REFERENCES players(steam_id),
+    FOREIGN KEY (steam_id) REFERENCES players(steam_id),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (car_id) REFERENCES cars(id)
 );
 
 CREATE INDEX laps_session_id_idx ON laps(session_id);
 CREATE INDEX laps_car_id_idx ON laps(car_id);
-CREATE INDEX laps_player_id_idx ON laps(player_id);
+CREATE INDEX laps_steam_id_idx ON laps(steam_id);
 
 CREATE TABLE splits (
     lap_id INTEGER NOT NULL,

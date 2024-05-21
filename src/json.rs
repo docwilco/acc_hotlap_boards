@@ -6,16 +6,18 @@ use std::time::Duration;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonDriver {
+pub struct Driver {
     pub first_name: String,
     pub last_name: String,
     pub short_name: String,
-    pub player_id: String,
+    #[serde(deserialize_with = "player_id_to_steam_id")]
+    pub steam_id: i64,
 }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonCar {
+pub struct Car {
     pub car_id: i64,
     pub race_number: i64,
     pub car_model: i64,
@@ -25,14 +27,14 @@ pub struct JsonCar {
     //pub nationality: i64,
     //car_guid: i64,
     //team_guid: i64,
-    pub drivers: Vec<JsonDriver>,
+    pub drivers: Vec<Driver>,
     pub ballast_kg: Option<i64>,
 }
 
 #[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTiming {
+pub struct Timing {
     //#[serde_as(as = "DurationMilliSeconds<u64>")]
     //last_lap: Duration,
     //#[serde_as(as = "Vec<DurationMilliSeconds<f64>>")]
@@ -50,11 +52,11 @@ pub struct JsonTiming {
 #[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonLeaderBoardLine {
-    pub car: JsonCar,
-    //current_driver: JsonDriver,
+pub struct LeaderBoardLine {
+    pub car: Car,
+    //current_driver: Driver,
     //current_driver_index: u64,
-    //timing: JsonTiming,
+    //timing: Timing,
     //missing_mandatory_pitstop: i64,
     //#[serde_as(as = "Vec<DurationMilliSeconds<f64>>")]
     //driver_total_times: Vec<Duration>,
@@ -63,7 +65,7 @@ pub struct JsonLeaderBoardLine {
 #[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonSessionResult {
+pub struct SessionResult {
     //#[serde_as(as = "DurationMilliSeconds<u64>")]
     //bestlap: Duration,
     //#[serde_as(as = "Vec<DurationMilliSeconds<u64>>")]
@@ -71,13 +73,13 @@ pub struct JsonSessionResult {
     pub is_wet_session: i64,
     //#[serde(rename = "type")]
     //session_type: u64,
-    pub leader_board_lines: Vec<JsonLeaderBoardLine>,
+    pub leader_board_lines: Vec<LeaderBoardLine>,
 }
 
 #[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonLap {
+pub struct Lap {
     pub car_id: i64,
     pub driver_index: i64,
     #[serde_as(as = "DurationMilliSeconds<u64>")]
@@ -89,7 +91,7 @@ pub struct JsonLap {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonPenalty {
+pub struct Penalty {
     //car_id: u64,
     //driver_index: u64,
     //reason: String,
@@ -101,42 +103,43 @@ pub struct JsonPenalty {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonSessionResults {
+pub struct SessionResults {
     pub session_type: String,
     pub track_name: String,
     //session_index: u64,
     //race_weekend_index: i64,
     pub server_name: String,
-    pub session_result: JsonSessionResult,
-    pub laps: Vec<JsonLap>,
-    //penalties: Vec<JsonPenalty>,
-    //post_race_penalties: Option<Vec<JsonPenalty>>,
+    pub session_result: SessionResult,
+    pub laps: Vec<Lap>,
+    //penalties: Vec<Penalty>,
+    //post_race_penalties: Option<Vec<Penalty>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonEntryListDriver {
+pub struct EntryListDriver {
     pub first_name: String,
     pub last_name: String,
     pub short_name: String,
     pub nick_name: Option<String>,
-    #[serde(rename = "playerID")]
-    pub player_id: String,
+    #[serde(rename = "playerID", deserialize_with = "player_id_to_steam_id")]
+    pub steam_id: i64,
     pub nationality: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonEntry {
-    pub drivers: Vec<JsonEntryListDriver>,
+pub struct Entry {
+    pub drivers: Vec<EntryListDriver>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonEntryList {
-    pub entries: Vec<JsonEntry>,
+pub struct EntryList {
+    pub entries: Vec<Entry>,
 }
 
+#[derive(Clone, Copy)]
 enum Encoding {
     Utf8,
     Utf16Le,
@@ -157,6 +160,7 @@ fn try_conversion(bytes: &[u8], encoding: Encoding) -> Result<String> {
     })
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub fn bytes_to_json_string(bytes: &[u8]) -> Result<String> {
     // Check for BOM
     if bytes[0..3] == [0xEF, 0xBB, 0xBF] {
@@ -173,21 +177,21 @@ pub fn bytes_to_json_string(bytes: &[u8]) -> Result<String> {
     let (be_nuls, le_nuls) =
         bytes
             .chunks(2)
-            .fold((0, 0), |(be_nuls, le_nuls), chunk| match chunk {
+            .fold((0_usize, 0_usize), |(be_nuls, le_nuls), chunk| match chunk {
                 [0, 0] => (be_nuls + 1, le_nuls + 1),
                 [0, _] => (be_nuls + 1, le_nuls),
                 [_, 0] => (be_nuls, le_nuls + 1),
                 _ => panic!("chunk size not 2?!"),
             });
     // Let's say if 45+% of the bytes are BE NULs, then it's probably UTF-16BE
-    if be_nuls >= (0.45 * (bytes.len() as f64)) as usize {
+    if be_nuls as f64 >= (0.45 * (bytes.len() as f64)) {
         if let Ok(text) = try_conversion(bytes, Encoding::Utf16Be) {
             return Ok(text);
         }
     }
 
     // Same for LE NULs
-    if le_nuls >= (0.45 * (bytes.len() as f64)) as usize {
+    if le_nuls as f64 >= (0.45 * (bytes.len() as f64)) {
         if let Ok(text) = try_conversion(bytes, Encoding::Utf16Be) {
             return Ok(text);
         }
@@ -204,4 +208,20 @@ pub fn bytes_to_json_string(bytes: &[u8]) -> Result<String> {
         return Ok(text);
     }
     Err(anyhow::anyhow!("Failed to figure out JSON file encoding"))
+}
+
+// Player ID is basically SteamID with an 'S' prefix. Throughout this code,
+// we'll refer to SteamID as `steam_id`, and we constrain the existence of
+// Player ID to just this function.
+pub fn player_id_to_steam_id<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let player_id = String::deserialize(deserializer)?;
+    let mut chars = player_id.chars();
+    if chars.next() != Some('S') {
+        return Err(serde::de::Error::custom(format!("Invalid player ID: {player_id}")));
+    }
+    let steam_id = chars.collect::<String>().parse::<i64>().map_err(serde::de::Error::custom)?;
+    Ok(steam_id)
 }

@@ -73,12 +73,12 @@ table th {
                                     <tr>
                                         <th>#</th>
                                         <th>Driver</th>
-                                        <th>Laptime</th>
-                                        <th>Gap</th>
-                                        <th>Interval</th>
+                                        <th>Laptime<br>(Optimal)</th>
+                                        <th>Gap<br>(Interval)</th>
                                         <th>Splits</th>
+                                        <th>(Optimal Splits)</th>
                                         <th>Car</th>
-                                        <th>Date</th>
+                                        <th>Date<br>Laps</th>
                                         <!--th class="text-end">Extra</th-->
                                     </tr>
                                 </thead>
@@ -88,7 +88,7 @@ table th {
                                         <td>{{ loop.index }}</td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <img src="static/{{ line.player_id }}.png" class="avatar sm rounded-pill me-3 flex-shrink-0">
+                                                <img src="static/S{{ line.steam_id }}.png" class="avatar sm rounded-pill me-3 flex-shrink-0">
                                                 <div>
                                                     <div class="h6 mb-0 lh-1">{{ line.name }}
                                                         <img class="flag" src="/static/flags/4x3/{{ line.flag_code }}.svg" alt="{{ line.flag_name }}">
@@ -96,14 +96,28 @@ table th {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td>{{ line.laptime }}</td>
-                                        <td>{{ line.gap }}</td>
-                                        <td>{{ line.interval }}</td>
-                                        <td>{{ line.splits }}</td>
+                                        <td>{{ line.laptime }}<br>({{ line.optimal_laptime }})</td>
+                                        {% if loop.first %}
+                                        <td>-</td>
+                                        {% else %}
+                                        <td>{{ line.gap }}<br>({{ line.interval }})</td>
+                                        {% endif %}
+                                        <td>
+                                            {% for split in line.splits %}
+                                            {{ split }}<br>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for split in line.optimal_splits %}
+                                            ({{ split }})<br>
+                                            {% endfor %}
+                                        </td>
                                         <td>
                                             <span class="d-inline-block align-middle">{{ line.car }}</span>
                                         </td>
-                                        <td class="ts_to_local">{{ line.date }}</td>
+                                        <td><span class="ts_to_local">{{ line.date }}</span><br>
+                                            {{ line.laps_valid }} valid ({{ line.laps_total }} total)
+                                        </td>
                                         <!--td class="text-end">
                                             <div class="dropdown">
                                                 <a
@@ -130,6 +144,18 @@ table th {
             </div>
         </div>
         {% endfor %}
+        <!-- footer with github links -->
+        <div class="container">
+            <div class="row">
+                <div class="col-12">
+                    <footer class="footer mt-auto py-3 bg-light">
+                        <div class="container">
+                            <span class="text-muted">Source available on <a href="https://github.com/docwilco/acc_hotlap_boards">Github</a></span>
+                        </div>
+                    </footer>
+                </div>
+            </div>
+        </div>
         <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"></script>
         <script type="text/javascript">
