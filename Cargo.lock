@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "acc_hotlap_boards"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -14,6 +14,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "env_logger",
+ "include_dir",
  "itertools",
  "log",
  "phf",
@@ -23,6 +24,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tower-http",
+ "tower-serve-static",
 ]
 
 [[package]]
@@ -991,6 +993,25 @@ checksum = "634d9b1461af396cad843f47fdba5597a4f9e6ddd4bfb6ff5d85028c25cb12f6"
 dependencies = [
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "include_dir"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18762faeff7122e89e0857b02f7ce6fcc0d101d5e9ad2ad7846cc01d61b7f19e"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b139284b5cf57ecfa712bcc66950bb635b31aff41c188e8a4cfc758eca374a3f"
+dependencies = [
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]
@@ -2238,6 +2259,27 @@ name = "tower-layer"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c20c8dbed6283a09604c3e69b4b7eeb54e298b8a600d4d5ecb5ad39de609f1d0"
+
+[[package]]
+name = "tower-serve-static"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "148022c3d604d85a3b558ef7154aa90aaec5f9506beae64f6ad4e856306d287f"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "include_dir",
+ "mime",
+ "mime_guess",
+ "percent-encoding",
+ "pin-project",
+ "tokio",
+ "tokio-util",
+ "tower-service",
+]
 
 [[package]]
 name = "tower-service"

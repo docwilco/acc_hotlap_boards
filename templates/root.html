@@ -133,7 +133,7 @@ table th {
                                             {% endfor %}
                                         </td>
                                         <td class="tekst-center">
-                                            {% for split in line.optimal_splits %}
+                                            {% for split in line.best_splits %}
                                             ({{ split }})
                                             <br>
                                             {% endfor %}
@@ -142,7 +142,7 @@ table th {
                                             <span class="d-inline-block align-middle">{{ line.car }}</span>
                                         </td>
                                         <td>
-                                            <span class="ts_to_local">{{ line.date }}</span>
+                                            <span class="ts_to_local">{{ line.timestamp }}</span>
                                             <br>
                                             {{ line.laps_valid }} valid ({{ line.laps_total }} total)
                                         </td>

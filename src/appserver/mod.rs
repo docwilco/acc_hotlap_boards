@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Context};
 use axum::{routing::get, Router};
+use include_dir::{include_dir, Dir};
 use phf::{phf_map, Map};
 use sqlx::SqlitePool;
-use std::{sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
+use tower_serve_static::ServeDir;
 
 mod rootpage;
 
@@ -97,8 +98,6 @@ static NATIONALITY_TO_COUNTRY: Map<i64, &'static str> = phf_map! {
     85_i64 => "Malta",
     86_i64 => "England",
 };
-
-
 
 static NATIONALITY_TO_ISO: Map<i64, &'static str> = phf_map! {
     0_i64 => "xx", // Other
@@ -266,18 +265,22 @@ struct StateInner {
 #[derive(Clone)]
 struct State(Arc<StateInner>);
 
+static STATIC_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/static");
+
 pub async fn run(pool: SqlitePool) -> Result<(), anyhow::Error> {
     let state = State(Arc::new(StateInner { pool }));
 
+    let bind_address = env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+
     let app = Router::new()
-    .route("/", get(rootpage::handler))
-    .with_state(state.clone())
-    .nest_service("/static", ServeDir::new("static"));
-    let listener = TcpListener::bind("127.0.0.1:3000")
-    .await
-    .context(anyhow!("Failed to bind to port 3000"))?;
+        .route("/", get(rootpage::handler))
+        .with_state(state.clone())
+        .nest_service("/static", ServeDir::new(&STATIC_DIR));
+    let listener = TcpListener::bind(&bind_address)
+        .await
+        .context(anyhow!("Failed to bind to {bind_address}"))?;
     axum::serve(listener, app)
-    .await
-    .context(anyhow!("Failed to start server"))?;
+        .await
+        .context(anyhow!("Failed to start server"))?;
     Ok(())
 }

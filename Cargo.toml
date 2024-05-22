@@ -1,6 +1,6 @@
 [package]
 name = "acc_hotlap_boards"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,6 +14,7 @@ axum = { version = "0.7.5", features = ["macros"] }
 chrono = "0.4.38"
 dotenvy = "0.15.7"
 env_logger = "0.11.3"
+include_dir = "0.7.3"
 itertools = "0.12.1"
 log = "0.4.21"
 phf = { version = "0.11.2", features = ["macros"] }
@@ -23,3 +24,4 @@ serde_with = "3.7.0"
 sqlx = { version = "0.7.4", features = ["sqlite", "runtime-tokio"] }
 tokio = { version = "1.37.0", features = ["rt-multi-thread"] }
 tower-http = { version = "0.5.2", features = ["fs"] }
+tower-serve-static = "0.1.1"
