@@ -130,18 +130,11 @@ async fn add_session_results(
 ) -> Result<()> {
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let timestamp = filename_to_timestamp(filename)?;
+
+    // Check for and delete previous session if current one is a superset of them
     while check_previous_session_overlap(&mut tx, &session_results, timestamp).await? {}
-    let timestamp = timestamp.timestamp();
-    let session_id = sqlx::query!(
-        "INSERT INTO sessions (track, type, timestamp, server_name, wet) VALUES (?, ?, ?, ?, ?) RETURNING id;",
-        session_results.track_name,
-        session_results.session_type,
-        timestamp,
-        session_results.server_name,
-        session_results.session_result.is_wet_session
-    )
-    .fetch_one(&mut *tx)
-    .await?.id;
+
+    let session_id = insert_session_row(timestamp, &session_results, &mut tx).await?;
 
     // Snag all of the driver info from the session results
     let mut steam_id_to_player_names = HashMap::new();
@@ -157,42 +150,11 @@ async fn add_session_results(
                 driver.steam_id,
             );
         }
-        let db_car_id = sqlx::query!(
-            "INSERT OR REPLACE INTO cars (
-                session_id, race_number, model, cup_category, car_group, team_name, ballast_kg
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            RETURNING id;",
-            session_id,
-            line.car.race_number,
-            line.car.car_model,
-            line.car.cup_category,
-            line.car.car_group,
-            line.car.team_name,
-            line.car.ballast_kg
-        )
-        .fetch_one(&mut *tx)
-        .await?
-        .id;
+        let db_car_id = insert_car(session_id, &line, &mut tx).await?;
         car_id_to_db_id.insert(line.car.car_id, db_car_id);
     }
 
-    for (id, player) in steam_id_to_player_names {
-        sqlx::query!(
-            "INSERT INTO players
-            (steam_id, first_name, last_name, short_name)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT (steam_id) DO UPDATE SET
-            first_name = excluded.first_name,
-            last_name = excluded.last_name,
-            short_name = excluded.short_name;",
-            id,
-            player.first_name,
-            player.last_name,
-            player.short_name
-        )
-        .execute(&mut *tx)
-        .await?;
-    }
+    upsert_driver_data(steam_id_to_player_names, &mut tx).await?;
 
     for lap in session_results.laps {
         let steam_id = car_driver_to_steam_id
@@ -238,6 +200,71 @@ async fn add_session_results(
         .await?;
     tx.commit().await?;
     Ok(())
+}
+
+async fn upsert_driver_data(
+    steam_id_to_player_names: HashMap<i64, json::Driver>,
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<(), anyhow::Error> {
+    for (id, player) in steam_id_to_player_names {
+        sqlx::query!(
+            "INSERT INTO players
+            (steam_id, first_name, last_name, short_name)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (steam_id) DO UPDATE SET
+            first_name = excluded.first_name,
+            last_name = excluded.last_name,
+            short_name = excluded.short_name;",
+            id,
+            player.first_name,
+            player.last_name,
+            player.short_name
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn insert_car(
+    session_id: i64,
+    line: &json::LeaderBoardLine,
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<i64, anyhow::Error> {
+    Ok(sqlx::query!(
+        "INSERT OR REPLACE INTO cars (
+                session_id, race_number, model, cup_category, car_group, team_name, ballast_kg
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id;",
+        session_id,
+        line.car.race_number,
+        line.car.car_model,
+        line.car.cup_category,
+        line.car.car_group,
+        line.car.team_name,
+        line.car.ballast_kg
+    )
+    .fetch_one(&mut **tx)
+    .await?
+    .id)
+}
+
+async fn insert_session_row(
+    timestamp: DateTime<Utc>,
+    session_results: &json::SessionResults,
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<i64, anyhow::Error> {
+    let timestamp = timestamp.timestamp();
+    Ok(sqlx::query!(
+        "INSERT INTO sessions (track, type, timestamp, server_name, wet) VALUES (?, ?, ?, ?, ?) RETURNING id;",
+        session_results.track_name,
+        session_results.session_type,
+        timestamp,
+        session_results.server_name,
+        session_results.session_result.is_wet_session
+    )
+    .fetch_one(&mut **tx)
+    .await?.id)
 }
 
 async fn add_entrylist(
