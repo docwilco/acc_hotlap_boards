@@ -363,8 +363,8 @@ async fn get_fastest_laps_data(conn: &mut SqliteConnection) -> Vec<FastestLapQue
 async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), Vec<Duration>> {
     sqlx::query!(
         r#"
-        SELECT s.track,
-            l.steam_id,
+        SELECT s.track as "track!",
+            l.steam_id as "steam_id!",
             sp.sector,
             MIN(sp.time_ms) AS time_ms
         FROM splits sp
@@ -386,10 +386,7 @@ async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), 
             .into_iter()
             .map(|row| Duration::from_millis(row.time_ms.try_into().unwrap()))
             .collect::<Vec<_>>();
-        // unwrap() because SQLx thinks it's possible to have a NULL track or
-        // steam_id. This isn't the case, but if this changes, just remove
-        // these unwraps.
-        ((track.unwrap(), steam_id.unwrap()), best_sectors)
+        ((track, steam_id), best_sectors)
     })
     .collect::<HashMap<_, _>>()
 }
