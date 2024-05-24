@@ -1,8 +1,8 @@
 use super::State;
 use askama_axum::Template;
 use axum::{extract, response::IntoResponse};
-use itertools::{izip, EitherOrBoth};
 use itertools::Itertools;
+use itertools::{izip, EitherOrBoth};
 use sqlx::SqliteConnection;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -47,8 +47,8 @@ struct DisplayLine {
     best_splits: Vec<DurationWithClass>,
     car: String,
     timestamp: i64,
-    laps_valid: i32,
-    laps_total: i32,
+    laps_valid: i64,
+    laps_total: i64,
 }
 
 impl DisplayLine {
@@ -66,8 +66,8 @@ impl DisplayLine {
         timestamp: i64,
         splits: &[Duration],
         best_splits: &[Duration],
-        laps_valid: i32,
-        laps_total: i32,
+        laps_valid: i64,
+        laps_total: i64,
     ) -> Self {
         // Name
         let name = format!("{first_name} {last_name} ({short_name})");
@@ -366,7 +366,7 @@ async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), 
         SELECT s.track as "track!",
             l.steam_id as "steam_id!",
             sp.sector,
-            MIN(sp.time_ms) AS time_ms
+            MIN(sp.time_ms) AS "sector_time_ms: i64"
         FROM splits sp
         INNER JOIN laps l ON sp.lap_id = l.id
         INNER JOIN sessions s ON l.session_id = s.id
@@ -384,21 +384,21 @@ async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), 
     .map(|((track, steam_id), rows)| {
         let best_sectors = rows
             .into_iter()
-            .map(|row| Duration::from_millis(row.time_ms.try_into().unwrap()))
+            .map(|row| Duration::from_millis(row.sector_time_ms.try_into().unwrap()))
             .collect::<Vec<_>>();
         ((track, steam_id), best_sectors)
     })
     .collect::<HashMap<_, _>>()
 }
 
-async fn get_lap_counts(conn: &mut SqliteConnection) -> HashMap<(String, i64), (i32, i32)> {
+async fn get_lap_counts(conn: &mut SqliteConnection) -> HashMap<(String, i64), (i64, i64)> {
     // Get valid and total laps for each player for each track
     sqlx::query!(
         r#"
         SELECT s.track,
             l.steam_id,
-            COUNT(1) FILTER (WHERE l.valid = 1) AS valid_laps,
-            COUNT(1) AS total_laps
+            COUNT(1) FILTER (WHERE l.valid = 1) AS "valid_laps: i64",
+            COUNT(1) AS "total_laps: i64"
         FROM sessions s
         INNER JOIN laps l ON s.id = l.session_id
         GROUP BY s.track, l.steam_id;
