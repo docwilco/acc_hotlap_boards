@@ -49,6 +49,12 @@ table th {
 .tekst-center {
     text-align: center;
 }
+.purple {
+    color: #da12da;
+}
+.green {
+    color: #00da00;
+}
         </style>
         <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
     </head>
@@ -113,9 +119,13 @@ table th {
                                             </div>
                                         </td>
                                         <td class="tekst-center">
-                                            {{ line.laptime }}
+                                            <span class="{{ line.laptime.class }}">
+                                                {{ line.laptime }}
+                                            </span>
                                             <br>
-                                            ({{ line.optimal_laptime }})
+                                            <span class="{{ line.optimal_laptime.class }}">
+                                                ({{ line.optimal_laptime }})
+                                            </span>
                                         </td>
                                         {% if loop.first %}
                                         <td class="tekst-center">-</td>
@@ -128,13 +138,13 @@ table th {
                                         {% endif %}
                                         <td class="tekst-center">
                                             {% for split in line.splits %}
-                                            {{ split }}
+                                            <span class="{{ split.class }}">{{ split }}</span>
                                             <br>
                                             {% endfor %}
                                         </td>
                                         <td class="tekst-center">
                                             {% for split in line.best_splits %}
-                                            ({{ split }})
+                                            <span class="{{ split.class }}">({{ split }})</span>
                                             <br>
                                             {% endfor %}
                                         </td>

@@ -6,9 +6,7 @@ use chrono::{DateTime, Local, NaiveDateTime, Utc};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use serde::de::DeserializeOwned;
-use sqlx::{
-    Connection, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool, Transaction,
-};
+use sqlx::{Connection, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool, Transaction};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -78,7 +76,7 @@ async fn check_previous_session_overlap(
     }
     let previous_session_id = previous_session_id.unwrap();
     let previous_laps = sqlx::query!(
-        "SELECT lap_id, time_ms
+        "SELECT lap_id, time_ms as sector_time_ms
         FROM splits
         WHERE lap_id IN (
             SELECT id
@@ -108,7 +106,7 @@ async fn check_previous_session_overlap(
     .group_by(|row| row.lap_id)
     .into_iter()
     .map(|(_, rows)| {
-        rows.map(|row| Duration::from_millis(row.time_ms.try_into().unwrap()))
+        rows.map(|row| Duration::from_millis(row.sector_time_ms.try_into().unwrap()))
             .collect::<Vec<_>>()
     })
     .collect::<HashSet<_>>();
@@ -154,7 +152,10 @@ async fn add_session_results(
         // enumerate()
         for (index, driver) in line.car.drivers.iter().enumerate() {
             steam_id_to_player_names.insert(driver.steam_id, driver.clone());
-            car_driver_to_steam_id.insert((line.car.car_id, i64::try_from(index).unwrap()), driver.steam_id);
+            car_driver_to_steam_id.insert(
+                (line.car.car_id, i64::try_from(index).unwrap()),
+                driver.steam_id,
+            );
         }
         let db_car_id = sqlx::query!(
             "INSERT OR REPLACE INTO cars (
@@ -206,26 +207,26 @@ async fn add_session_results(
         let car_id = car_id_to_db_id
             .get(&lap.car_id)
             .ok_or_else(|| anyhow!("No car ID found for car {}", lap.car_id))?;
-        let time_ms: i64 = lap.laptime.as_millis().try_into().unwrap();
+        let laptime_ms: i64 = lap.laptime.as_millis().try_into().unwrap();
         let lap_id = sqlx::query!(
             "INSERT INTO laps (steam_id, session_id, car_id, time_ms, valid) VALUES (?, ?, ?, ?, ?) RETURNING id;",
             steam_id,
             session_id,
             car_id,
-            time_ms,
+            laptime_ms,
             lap.is_valid_for_best
         )
         .fetch_one(&mut *tx)
         .await?.id;
         for (index, split_time) in lap.splits.iter().enumerate() {
-            let time_ms: i64 = split_time.as_millis().try_into().unwrap();
+            let sector_time_ms: i64 = split_time.as_millis().try_into().unwrap();
             #[allow(clippy::cast_possible_wrap)]
             let sector = index as i64 + 1;
             sqlx::query!(
                 "INSERT INTO splits (lap_id, sector, time_ms) VALUES (?, ?, ?);",
                 lap_id,
                 sector,
-                time_ms
+                sector_time_ms
             )
             .execute(&mut *tx)
             .await?;

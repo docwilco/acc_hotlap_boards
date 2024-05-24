@@ -1,9 +1,11 @@
 use super::State;
 use askama_axum::Template;
 use axum::{extract, response::IntoResponse};
+use itertools::{izip, EitherOrBoth};
 use itertools::Itertools;
 use sqlx::SqliteConnection;
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use super::format_duration;
@@ -11,17 +13,38 @@ use super::CAR_MODEL_ID_TO_NAME;
 use super::NATIONALITY_TO_COUNTRY;
 use super::NATIONALITY_TO_ISO;
 
+#[derive(Clone)]
+struct DurationWithClass {
+    duration: Duration,
+    class: &'static str,
+}
+
+impl DurationWithClass {
+    fn new(duration: Duration) -> Self {
+        Self {
+            duration,
+            class: "",
+        }
+    }
+}
+
+impl Display for DurationWithClass {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format_duration(self.duration))
+    }
+}
+
 struct DisplayLine {
     steam_id: i64,
     name: String,
     flag_code: &'static str,
     flag_name: &'static str,
-    laptime: String,
-    optimal_laptime: String,
+    laptime: DurationWithClass,
+    optimal_laptime: DurationWithClass,
     gap: String,
     interval: String,
-    splits: Vec<String>,
-    best_splits: Vec<String>,
+    splits: Vec<DurationWithClass>,
+    best_splits: Vec<DurationWithClass>,
     car: String,
     timestamp: i64,
     laps_valid: i32,
@@ -35,51 +58,35 @@ impl DisplayLine {
         last_name: &str,
         short_name: &str,
         nationality: Option<i64>,
-        time_ms: i64,
+        laptime: Duration,
+        optimal_laptime: Duration,
+        gap: Option<Duration>,
+        interval: Option<Duration>,
         model: i64,
         timestamp: i64,
-        splits: &Vec<Duration>,
-        best_splits: &Vec<Duration>,
-        fastest_time: &mut Option<Duration>,
-        previous_time: &mut Option<Duration>,
+        splits: &[Duration],
+        best_splits: &[Duration],
         laps_valid: i32,
         laps_total: i32,
     ) -> Self {
         // Name
         let name = format!("{first_name} {last_name} ({short_name})");
 
-        // (Optimal) laptime
-        let laptime = format_duration(Duration::from_millis(time_ms.try_into().unwrap()));
-        // For a single lap, the splits added up can deviate by
-        // a 1ms from the time for the full lap. This is due to
-        // rounding errors. We'll just use the laptime as the
-        // optimal laptime if the splits are all from the
-        // current lap, to avoid the weird off by 1 value.
-        let optimal_laptime = if splits == best_splits {
-            laptime.clone()
-        } else {
-            let optimal_laptime = best_splits.iter().sum();
-            format_duration(optimal_laptime)
-        };
-
         // Gap and interval
-        let lap_duration = Duration::from_millis(time_ms.try_into().unwrap());
-        let gap = if let Some(fastest_time) = fastest_time {
-            let diff = lap_duration - *fastest_time;
-            format_duration(diff)
-        } else {
-            *fastest_time = Some(lap_duration);
-            String::new()
-        };
-        let interval = previous_time.map_or_else(String::new, |previous_time| {
-            let diff = lap_duration - previous_time;
-            format_duration(diff)
-        });
-        *previous_time = Some(lap_duration);
+        let gap = gap.map_or_else(String::new, format_duration);
+        let interval = interval.map_or_else(String::new, format_duration);
+
+        // (Optimal) laptime
+        let laptime = DurationWithClass::new(laptime);
+        let optimal_laptime = DurationWithClass::new(optimal_laptime);
 
         // (Optimal) splits
-        let splits = splits.iter().copied().map(format_duration).collect();
-        let best_splits = best_splits.iter().copied().map(format_duration).collect();
+        let splits = splits.iter().copied().map(DurationWithClass::new).collect();
+        let best_splits = best_splits
+            .iter()
+            .copied()
+            .map(DurationWithClass::new)
+            .collect();
 
         // Car
         let car = (*CAR_MODEL_ID_TO_NAME
@@ -131,7 +138,7 @@ struct FastestLapQueryRow {
     last_name: String,
     short_name: String,
     nationality: Option<i64>,
-    time_ms: i64,
+    laptime_ms: i64,
     model: i64,
     timestamp: i64,
     sector_time_ms: i64,
@@ -153,9 +160,10 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
         .map(|(track, rows)| {
             // Replace underscore with space and capitalize every first letter of each word in the trackname
             let display_track = track_id_to_display_name(&track);
-            let mut fastest_time = None;
-            let mut previous_time = None;
-            let display_lines = rows
+            let mut fastest_laptime = None;
+            let mut previous_laptime = None;
+            let mut fastest_optimal_time = None;
+            let mut display_lines: Vec<DisplayLine> = rows
                 .into_iter()
                 .group_by(|row| {
                     (
@@ -164,7 +172,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                         row.last_name.clone(),
                         row.short_name.clone(),
                         row.nationality,
-                        row.time_ms,
+                        row.laptime_ms,
                         row.model,
                         row.timestamp,
                     )
@@ -178,7 +186,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                             last_name,
                             short_name,
                             nationality,
-                            time_ms,
+                            laptime_ms,
                             model,
                             timestamp,
                         ),
@@ -193,6 +201,27 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                             .collect::<Vec<_>>();
                         let best_splits = best_splits_data.get(&(track.clone(), steam_id)).unwrap();
 
+                        let laptime = Duration::from_millis(laptime_ms.try_into().unwrap());
+                        // For a single lap, the splits added up can deviate by
+                        // a 1ms from the time for the full lap. This is due to
+                        // rounding errors. We'll just use the laptime as the
+                        // optimal laptime if the splits are all from the
+                        // current lap, to avoid the weird off by 1 value.
+                        let optimal_laptime = if &splits == best_splits {
+                            laptime
+                        } else {
+                            best_splits.iter().sum()
+                        };
+
+                        let gap = fastest_laptime.map(|fastest_lap| laptime - fastest_lap);
+                        fastest_laptime = fastest_laptime.or(Some(laptime));
+
+                        let interval =
+                            previous_laptime.map(|previous_time| laptime - previous_time);
+                        previous_laptime = Some(laptime);
+
+                        fastest_optimal_time = fastest_optimal_time.or(Some(optimal_laptime));
+
                         let (laps_valid, laps_total) =
                             laps_data.get(&(track.clone(), steam_id)).unwrap();
 
@@ -202,23 +231,81 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                             &last_name,
                             &short_name,
                             nationality,
-                            time_ms,
+                            laptime,
+                            optimal_laptime,
+                            gap,
+                            interval,
                             model,
                             timestamp,
                             &splits,
                             best_splits,
-                            &mut fastest_time,
-                            &mut previous_time,
                             *laps_valid,
                             *laps_total,
                         )
                     },
                 )
                 .collect();
+            set_purple_and_green(
+                &best_splits_data,
+                &track,
+                &mut display_lines,
+                fastest_laptime,
+                fastest_optimal_time,
+            );
             (display_track, display_lines)
         })
         .collect::<DisplayData>();
     RootTemplate { display_data }
+}
+
+fn set_purple_and_green(
+    best_splits_data: &HashMap<(String, i64), Vec<Duration>>,
+    track: &str,
+    display_lines: &mut Vec<DisplayLine>,
+    fastest_laptime: Option<Duration>,
+    fastest_optimal_time: Option<Duration>,
+) {
+    let overall_best_splits = best_splits_data
+        .iter()
+        .filter_map(|(key, splits)| if key.0 == track { Some(splits) } else { None })
+        .fold(Vec::new(), |acc, splits| {
+            acc.into_iter()
+                .zip_longest(splits)
+                .map(|eitherorboth| match eitherorboth {
+                    EitherOrBoth::Both(a, b) => {
+                        if a < b {
+                            a
+                        } else {
+                            b
+                        }
+                    }
+                    EitherOrBoth::Left(a) => a,
+                    EitherOrBoth::Right(b) => b,
+                })
+                .collect()
+        });
+    for display_line in display_lines {
+        if display_line.laptime.duration == fastest_laptime.unwrap() {
+            display_line.laptime.class = "purple";
+        }
+        if display_line.optimal_laptime.duration == fastest_optimal_time.unwrap() {
+            display_line.optimal_laptime.class = "purple";
+        }
+        for (split, personal_best_split, overall_best_split) in izip!(
+            display_line.splits.iter_mut(),
+            display_line.best_splits.iter_mut(),
+            overall_best_splits.iter()
+        ) {
+            if split.duration == **overall_best_split {
+                split.class = "purple";
+            } else if split.duration == personal_best_split.duration {
+                split.class = "green";
+            }
+            if personal_best_split.duration == **overall_best_split {
+                personal_best_split.class = "purple";
+            }
+        }
+    }
 }
 
 fn track_id_to_display_name(track: &str) -> String {
@@ -246,7 +333,7 @@ async fn get_fastest_laps_data(conn: &mut SqliteConnection) -> Vec<FastestLapQue
             p.last_name, 
             p.short_name,
             p.nationality,
-            l.time_ms,
+            l.time_ms as laptime_ms,
             c.model,
             s.timestamp,
             sp.time_ms AS sector_time_ms 
