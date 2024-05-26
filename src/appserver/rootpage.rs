@@ -52,6 +52,9 @@ struct DisplayLine {
 }
 
 impl DisplayLine {
+    // Can't really make this a smaller argument list, but there's only one
+    // place this is called from, so it's fine.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         steam_id: i64,
         first_name: &str,

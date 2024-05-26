@@ -405,7 +405,7 @@ async fn check_directory(results_dir: impl AsRef<Path>, pool: &SqlitePool) -> Re
     Ok(())
 }
 
-async fn watcher_task<'a>() -> Result<()> {
+async fn watcher_task() -> Result<()> {
     let dburl = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let results_path = env::var("RESULTS_PATH").expect("RESULTS_PATH must be set");
     // Make single connection
