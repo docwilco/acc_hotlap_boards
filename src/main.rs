@@ -131,6 +131,14 @@ async fn add_session_results(
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let timestamp = filename_to_timestamp(filename)?;
 
+    if session_results.laps.is_empty()
+    {
+        info!("Skipping empty session: {}", filename);
+        register_file(filename, &mut tx).await?;
+        tx.commit().await?;
+        return Ok(());
+    }
+
     // Check for and delete previous session if current one is a superset of them
     while check_previous_session_overlap(&mut tx, &session_results, timestamp).await? {}
 
@@ -195,10 +203,15 @@ async fn add_session_results(
         }
     }
 
-    sqlx::query!("INSERT INTO known_files (path) VALUES (?);", filename)
-        .execute(&mut *tx)
-        .await?;
+    register_file(filename, &mut tx).await?;
     tx.commit().await?;
+    Ok(())
+}
+
+async fn register_file(filename: &str, tx: &mut Transaction<'_, Sqlite>) -> Result<()> {
+    sqlx::query!("INSERT INTO known_files (path) VALUES (?);", filename)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
@@ -310,9 +323,7 @@ async fn add_entrylist(
             }
         }
     }
-    sqlx::query!("INSERT INTO known_files (path) VALUES (?);", filename)
-        .execute(&mut *tx)
-        .await?;
+    register_file(filename, &mut tx).await?;
     tx.commit().await?;
     Ok(())
 }
