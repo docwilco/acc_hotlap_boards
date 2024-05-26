@@ -10,7 +10,7 @@ pub struct Driver {
     pub first_name: String,
     pub last_name: String,
     pub short_name: String,
-    #[serde(deserialize_with = "player_id_to_steam_id")]
+    #[serde(rename = "playerId", deserialize_with = "player_id_to_steam_id")]
     pub steam_id: i64,
 }
 
@@ -210,9 +210,10 @@ pub fn bytes_to_json_string(bytes: &[u8]) -> Result<String> {
     Err(anyhow::anyhow!("Failed to figure out JSON file encoding"))
 }
 
-// Player ID is basically SteamID with an 'S' prefix. Throughout this code,
+// Player ID is basically SteamID(64) with an 'S' prefix. Throughout this code,
 // we'll refer to SteamID as `steam_id`, and we constrain the existence of
-// Player ID to just this function.
+// Player ID to just this function. We just call them drivers in the rest of the
+// code, and we identify them by SteamID.
 pub fn player_id_to_steam_id<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
     D: serde::Deserializer<'de>,

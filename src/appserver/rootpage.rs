@@ -246,11 +246,11 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                 )
                 .collect();
             set_purple_and_green(
-                &best_splits_data,
                 &track,
                 &mut display_lines,
                 fastest_laptime,
                 fastest_optimal_time,
+                &best_splits_data,
             );
             (display_track, display_lines)
         })
@@ -259,11 +259,11 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
 }
 
 fn set_purple_and_green(
-    best_splits_data: &HashMap<(String, i64), Vec<Duration>>,
     track: &str,
     display_lines: &mut Vec<DisplayLine>,
     fastest_laptime: Option<Duration>,
     fastest_optimal_time: Option<Duration>,
+    best_splits_data: &HashMap<(String, i64), Vec<Duration>>,
 ) {
     let overall_best_splits = best_splits_data
         .iter()
@@ -341,8 +341,8 @@ async fn get_fastest_laps_data(conn: &mut SqliteConnection) -> Vec<FastestLapQue
         INNER JOIN laps l ON s.id = l.session_id
         INNER JOIN splits sp ON l.id = sp.lap_id
         INNER JOIN cars c ON l.car_id = c.id
-        INNER JOIN players p ON l.steam_id = p.steam_id
-        -- Subquery needed to find the fastest valid lap for each player on each track.
+        INNER JOIN drivers p ON l.steam_id = p.steam_id
+        -- Subquery needed to find the fastest valid lap for each driver on each track.
         -- We need to use LIMIT, so subquery it is.
         WHERE l.id = (SELECT sl.id
                       FROM laps sl
@@ -392,7 +392,7 @@ async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), 
 }
 
 async fn get_lap_counts(conn: &mut SqliteConnection) -> HashMap<(String, i64), (i64, i64)> {
-    // Get valid and total laps for each player for each track
+    // Get valid and total laps for each driver for each track
     sqlx::query!(
         r#"
         SELECT s.track,

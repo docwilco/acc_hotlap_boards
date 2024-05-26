@@ -12,7 +12,7 @@ CREATE TABLE sessions (
     UNIQUE (timestamp, server_name)
 );
 
-CREATE TABLE players (
+CREATE TABLE drivers (
     steam_id INTEGER PRIMARY KEY NOT NULL,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE laps (
     car_id INTEGER NOT NULL,
     time_ms INTEGER NOT NULL,
     valid INTEGER NOT NULL,
-    FOREIGN KEY (steam_id) REFERENCES players(steam_id),
+    FOREIGN KEY (steam_id) REFERENCES drivers(steam_id),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (car_id) REFERENCES cars(id)
 );

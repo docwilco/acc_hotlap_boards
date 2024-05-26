@@ -137,14 +137,14 @@ async fn add_session_results(
     let session_id = insert_session_row(timestamp, &session_results, &mut tx).await?;
 
     // Snag all of the driver info from the session results
-    let mut steam_id_to_player_names = HashMap::new();
+    let mut steam_id_to_driver_names = HashMap::new();
     let mut car_driver_to_steam_id = HashMap::new();
     let mut car_id_to_db_id = HashMap::new();
     for line in session_results.session_result.leader_board_lines {
         // there's a driver index in the lap data that matches the index from
         // enumerate()
         for (index, driver) in line.car.drivers.iter().enumerate() {
-            steam_id_to_player_names.insert(driver.steam_id, driver.clone());
+            steam_id_to_driver_names.insert(driver.steam_id, driver.clone());
             car_driver_to_steam_id.insert(
                 (line.car.car_id, i64::try_from(index).unwrap()),
                 driver.steam_id,
@@ -154,14 +154,14 @@ async fn add_session_results(
         car_id_to_db_id.insert(line.car.car_id, db_car_id);
     }
 
-    upsert_driver_data(steam_id_to_player_names, &mut tx).await?;
+    upsert_driver_data(steam_id_to_driver_names, &mut tx).await?;
 
     for lap in session_results.laps {
         let steam_id = car_driver_to_steam_id
             .get(&(lap.car_id, lap.driver_index))
             .ok_or_else(|| {
                 anyhow!(
-                    "No player ID found for car {} driver {}",
+                    "No driver ID found for car {} driver {}",
                     lap.car_id,
                     lap.driver_index
                 )
@@ -203,12 +203,12 @@ async fn add_session_results(
 }
 
 async fn upsert_driver_data(
-    steam_id_to_player_names: HashMap<i64, json::Driver>,
+    steam_id_to_driver_names: HashMap<i64, json::Driver>,
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<(), anyhow::Error> {
-    for (id, player) in steam_id_to_player_names {
+    for (id, driver) in steam_id_to_driver_names {
         sqlx::query!(
-            "INSERT INTO players
+            "INSERT INTO drivers
             (steam_id, first_name, last_name, short_name)
             VALUES (?, ?, ?, ?)
             ON CONFLICT (steam_id) DO UPDATE SET
@@ -216,9 +216,9 @@ async fn upsert_driver_data(
             last_name = excluded.last_name,
             short_name = excluded.short_name;",
             id,
-            player.first_name,
-            player.last_name,
-            player.short_name
+            driver.first_name,
+            driver.last_name,
+            driver.short_name
         )
         .execute(&mut **tx)
         .await?;
@@ -276,7 +276,7 @@ async fn add_entrylist(
     for entry in entrylist.entries {
         for driver in entry.drivers {
             sqlx::query!(
-                "INSERT INTO players 
+                "INSERT INTO drivers 
                 (steam_id, first_name, last_name, short_name)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(steam_id) DO UPDATE SET
@@ -292,7 +292,7 @@ async fn add_entrylist(
             .await?;
             if let Some(nickname) = driver.nick_name {
                 sqlx::query!(
-                    "UPDATE players SET nickname = ? WHERE steam_id = ?;",
+                    "UPDATE drivers SET nickname = ? WHERE steam_id = ?;",
                     nickname,
                     driver.steam_id
                 )
@@ -301,7 +301,7 @@ async fn add_entrylist(
             }
             if let Some(nationality) = driver.nationality {
                 sqlx::query!(
-                    "UPDATE players SET nationality = ? WHERE steam_id = ?;",
+                    "UPDATE drivers SET nationality = ? WHERE steam_id = ?;",
                     nationality,
                     driver.steam_id
                 )
@@ -358,7 +358,7 @@ async fn check_file(path: impl AsRef<Path>, conn: &mut SqliteConnection) -> Resu
             let session_results = match read_file(&path) {
                 Ok(session_results) => session_results,
                 Err(e) => {
-                    warn!("Failed to read results file: {}", e);
+                    warn!("Failed to read results file: {}\n{}", e, e.root_cause());
                     return Ok(());
                 }
             };
