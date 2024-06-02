@@ -149,7 +149,13 @@ table th {
                                             {% endfor %}
                                         </td>
                                         <td>
-                                            <span class="d-inline-block align-middle">{{ line.car }}</span>
+                                            <span class="d-inline-block align-middle">
+                                                {{ line.car }}
+                                                {% if let Some(ballast_kg) = line.ballast_kg %}
+                                                <br>
+                                                {{ ballast_kg }}kg ballast
+                                                {% endif %}
+                                            </span>
                                         </td>
                                         <td>
                                             <span class="ts_to_local">{{ line.timestamp }}</span>

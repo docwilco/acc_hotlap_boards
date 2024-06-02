@@ -11,6 +11,7 @@ askama = "0.12.1"
 askama_axum = "0.4.0"
 async-watcher = "0.2.1"
 axum = { version = "0.7.5", features = ["macros"] }
+cached = { version = "0.51.3", features = ["async_tokio_rt_multi_thread"] }
 chrono = "0.4.38"
 dotenvy = "0.15.7"
 env_logger = "0.11.3"

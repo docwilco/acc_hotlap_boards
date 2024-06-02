@@ -1,6 +1,7 @@
-use super::State;
+use anyhow::Result;
 use askama_axum::Template;
 use axum::{extract, response::IntoResponse};
+use cached::proc_macro::once;
 use itertools::Itertools;
 use itertools::{izip, EitherOrBoth};
 use sqlx::SqliteConnection;
@@ -12,6 +13,7 @@ use super::format_duration;
 use super::CAR_MODEL_ID_TO_NAME;
 use super::NATIONALITY_TO_COUNTRY;
 use super::NATIONALITY_TO_ISO;
+use super::State;
 
 #[derive(Clone)]
 struct DurationWithClass {
@@ -34,6 +36,7 @@ impl Display for DurationWithClass {
     }
 }
 
+#[derive(Clone)]
 struct DisplayLine {
     steam_id: i64,
     name: String,
@@ -46,6 +49,7 @@ struct DisplayLine {
     splits: Vec<DurationWithClass>,
     best_splits: Vec<DurationWithClass>,
     car: String,
+    ballast_kg: Option<i64>,
     timestamp: i64,
     laps_valid: i64,
     laps_total: i64,
@@ -66,6 +70,7 @@ impl DisplayLine {
         gap: Option<Duration>,
         interval: Option<Duration>,
         model: i64,
+        ballast_kg: Option<i64>,
         timestamp: i64,
         splits: &[Duration],
         best_splits: &[Duration],
@@ -119,6 +124,7 @@ impl DisplayLine {
             splits,
             best_splits,
             car,
+            ballast_kg,
             timestamp,
             laps_valid,
             laps_total,
@@ -143,12 +149,19 @@ struct FastestLapQueryRow {
     nationality: Option<i64>,
     laptime_ms: i64,
     model: i64,
+    ballast_kg: Option<i64>,
     timestamp: i64,
     sector_time_ms: i64,
 }
 
 pub(crate) async fn handler(extract::State(state): extract::State<State>) -> impl IntoResponse {
-    let mut conn = state.0.pool.acquire().await.unwrap();
+    let display_data = get_display_data(state).await.unwrap();
+    RootTemplate { display_data }
+}
+
+#[once(time = 60, result = true)]
+async fn get_display_data(state: State) -> Result<Vec<(String, Vec<DisplayLine>)>> {
+    let mut conn = state.0.pool.acquire().await?;
 
     let fastest_laps_data = get_fastest_laps_data(&mut conn).await;
 
@@ -156,7 +169,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
 
     let laps_data = get_lap_counts(&mut conn).await;
 
-    let display_data = fastest_laps_data
+    fastest_laps_data
         .into_iter()
         .group_by(|row| row.track.clone())
         .into_iter()
@@ -177,6 +190,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                         row.nationality,
                         row.laptime_ms,
                         row.model,
+                        row.ballast_kg,
                         row.timestamp,
                     )
                 })
@@ -191,6 +205,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                             nationality,
                             laptime_ms,
                             model,
+                            ballast_kg,
                             timestamp,
                         ),
                         rows,
@@ -239,6 +254,7 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                             gap,
                             interval,
                             model,
+                            ballast_kg,
                             timestamp,
                             &splits,
                             best_splits,
@@ -255,10 +271,9 @@ pub(crate) async fn handler(extract::State(state): extract::State<State>) -> imp
                 fastest_optimal_time,
                 &best_splits_data,
             );
-            (display_track, display_lines)
+            Ok((display_track, display_lines))
         })
-        .collect::<DisplayData>();
-    RootTemplate { display_data }
+        .collect::<Result<DisplayData>>()
 }
 
 fn set_purple_and_green(
@@ -338,6 +353,7 @@ async fn get_fastest_laps_data(conn: &mut SqliteConnection) -> Vec<FastestLapQue
             p.nationality,
             l.time_ms as laptime_ms,
             c.model,
+            c.ballast_kg,
             s.timestamp,
             sp.time_ms AS sector_time_ms 
         FROM sessions s

@@ -227,6 +227,7 @@ static CAR_MODEL_ID_TO_NAME: Map<u64, &'static str> = phf_map! {
     33_u64 => "Lamborghini Huracan GT3 Evo 2",
     34_u64 => "Porsche 992 GT3 R",
     35_u64 => "McLaren 720S GT3 Evo",
+    36_u64 => "Ford Mustang GT3",
     50_u64 => "Alpine A110 GT4",
     51_u64 => "Aston Martin Vantage GT4",
     52_u64 => "Audi R8 LMS GT4",
