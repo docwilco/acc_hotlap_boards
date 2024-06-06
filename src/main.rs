@@ -131,8 +131,7 @@ async fn add_session_results(
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let timestamp = filename_to_timestamp(filename)?;
 
-    if session_results.laps.is_empty()
-    {
+    if session_results.laps.is_empty() {
         info!("Skipping empty session: {}", filename);
         register_file(filename, &mut tx).await?;
         tx.commit().await?;

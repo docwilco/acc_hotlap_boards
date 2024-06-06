@@ -1,12 +1,18 @@
 use anyhow::{anyhow, Context};
-use axum::{routing::get, Router};
+use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
 use include_dir::{include_dir, Dir};
 use phf::{phf_map, Map};
 use sqlx::SqlitePool;
-use std::{env, sync::Arc, time::Duration};
+use std::{
+    env,
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::net::TcpListener;
 use tower_serve_static::ServeDir;
 
+mod driver;
 mod rootpage;
 
 static NATIONALITY_TO_COUNTRY: Map<i64, &'static str> = phf_map! {
@@ -259,6 +265,27 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
+#[derive(Clone)]
+struct DurationWithClass {
+    duration: Duration,
+    class: &'static str,
+}
+
+impl DurationWithClass {
+    fn new(duration: Duration) -> Self {
+        Self {
+            duration,
+            class: "",
+        }
+    }
+}
+
+impl Display for DurationWithClass {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format_duration(self.duration))
+    }
+}
+
 struct StateInner {
     pool: SqlitePool,
 }
@@ -275,8 +302,10 @@ pub async fn run(pool: SqlitePool) -> Result<(), anyhow::Error> {
 
     let app = Router::new()
         .route("/", get(rootpage::handler))
+        .route("/driver/:driver_id", get(driver::handler))
         .with_state(state.clone())
-        .nest_service("/static", ServeDir::new(&STATIC_DIR));
+        .nest_service("/static", ServeDir::new(&STATIC_DIR))
+        .fallback(handler_404);
     let listener = TcpListener::bind(&bind_address)
         .await
         .context(anyhow!("Failed to bind to {bind_address}"))?;
@@ -284,4 +313,8 @@ pub async fn run(pool: SqlitePool) -> Result<(), anyhow::Error> {
         .await
         .context(anyhow!("Failed to start server"))?;
     Ok(())
+}
+
+async fn handler_404() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, "404 Not Found")
 }

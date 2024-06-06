@@ -2,39 +2,15 @@ use anyhow::Result;
 use askama_axum::Template;
 use axum::{extract, response::IntoResponse};
 use cached::proc_macro::once;
-use itertools::Itertools;
-use itertools::{izip, EitherOrBoth};
+use itertools::{izip, EitherOrBoth, Itertools};
+use log::debug;
 use sqlx::SqliteConnection;
-use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
-use super::format_duration;
-use super::CAR_MODEL_ID_TO_NAME;
-use super::NATIONALITY_TO_COUNTRY;
-use super::NATIONALITY_TO_ISO;
-use super::State;
-
-#[derive(Clone)]
-struct DurationWithClass {
-    duration: Duration,
-    class: &'static str,
-}
-
-impl DurationWithClass {
-    fn new(duration: Duration) -> Self {
-        Self {
-            duration,
-            class: "",
-        }
-    }
-}
-
-impl Display for DurationWithClass {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_duration(self.duration))
-    }
-}
+use super::{
+    format_duration, DurationWithClass, State, CAR_MODEL_ID_TO_NAME, NATIONALITY_TO_COUNTRY,
+    NATIONALITY_TO_ISO,
+};
 
 #[derive(Clone)]
 struct DisplayLine {
@@ -51,8 +27,8 @@ struct DisplayLine {
     car: String,
     ballast_kg: Option<i64>,
     timestamp: i64,
-    laps_valid: i64,
-    laps_total: i64,
+    valid_laps: i64,
+    total_laps: i64,
 }
 
 impl DisplayLine {
@@ -74,8 +50,8 @@ impl DisplayLine {
         timestamp: i64,
         splits: &[Duration],
         best_splits: &[Duration],
-        laps_valid: i64,
-        laps_total: i64,
+        valid_laps: i64,
+        total_laps: i64,
     ) -> Self {
         // Name
         let name = format!("{first_name} {last_name} ({short_name})");
@@ -106,10 +82,12 @@ impl DisplayLine {
         let natl = nationality;
         let flag_code = natl
             .and_then(|n| NATIONALITY_TO_ISO.get(&n))
-            .unwrap_or(&"xx");
+            .copied()
+            .unwrap_or("xx");
         let flag_name = natl
             .and_then(|n| NATIONALITY_TO_COUNTRY.get(&n))
-            .unwrap_or(&"Unknown");
+            .copied()
+            .unwrap_or("Unknown");
 
         // Combine it all together
         Self {
@@ -126,13 +104,20 @@ impl DisplayLine {
             car,
             ballast_kg,
             timestamp,
-            laps_valid,
-            laps_total,
+            valid_laps,
+            total_laps,
         }
     }
 }
 
-type DisplayData = Vec<(String, Vec<DisplayLine>)>;
+#[derive(Clone)]
+struct TrackDisplayData {
+    name: String,
+    overall_optimal_laptime: DurationWithClass,
+    display_lines: Vec<DisplayLine>,
+}
+
+type DisplayData = Vec<TrackDisplayData>;
 
 #[derive(Template)]
 #[template(path = "root.html")]
@@ -155,21 +140,22 @@ struct FastestLapQueryRow {
 }
 
 pub(crate) async fn handler(extract::State(state): extract::State<State>) -> impl IntoResponse {
+    debug!("root page");
     let display_data = get_display_data(state).await.unwrap();
     RootTemplate { display_data }
 }
 
 #[once(time = 60, result = true)]
-async fn get_display_data(state: State) -> Result<Vec<(String, Vec<DisplayLine>)>> {
+async fn get_display_data(state: State) -> Result<DisplayData> {
     let mut conn = state.0.pool.acquire().await?;
 
     let fastest_laps_data = get_fastest_laps_data(&mut conn).await;
 
-    let best_splits_data = get_best_splits(&mut conn).await;
+    let best_splits_data = get_fastest_splits(&mut conn).await;
 
     let laps_data = get_lap_counts(&mut conn).await;
 
-    fastest_laps_data
+    let mut display_data = fastest_laps_data
         .into_iter()
         .group_by(|row| row.track.clone())
         .into_iter()
@@ -240,7 +226,7 @@ async fn get_display_data(state: State) -> Result<Vec<(String, Vec<DisplayLine>)
 
                         fastest_optimal_time = fastest_optimal_time.or(Some(optimal_laptime));
 
-                        let (laps_valid, laps_total) =
+                        let (valid_laps, total_laps) =
                             laps_data.get(&(track.clone(), steam_id)).unwrap();
 
                         DisplayLine::new(
@@ -258,69 +244,84 @@ async fn get_display_data(state: State) -> Result<Vec<(String, Vec<DisplayLine>)
                             timestamp,
                             &splits,
                             best_splits,
-                            *laps_valid,
-                            *laps_total,
+                            *valid_laps,
+                            *total_laps,
                         )
                     },
                 )
                 .collect();
+            let overall_fastest_splits = best_splits_data
+                .iter()
+                .filter_map(|((t, _), splits)| if *t == track { Some(splits) } else { None })
+                .fold(Vec::new(), |acc, splits| {
+                    acc.into_iter()
+                        .zip_longest(splits)
+                        .map(|eitherorboth| match eitherorboth {
+                            EitherOrBoth::Both(a, b) => {
+                                if a < *b {
+                                    a
+                                } else {
+                                    *b
+                                }
+                            }
+                            EitherOrBoth::Left(_) => {
+                                unreachable!("Accumulator should never have more values")
+                            }
+                                    EitherOrBoth::Right(b) => *b,
+                        })
+                        .collect()
+                });
+            let overall_optimal_laptime = overall_fastest_splits.iter().copied().sum();
+            let overall_optimal_laptime = DurationWithClass::new(overall_optimal_laptime);
             set_purple_and_green(
-                &track,
                 &mut display_lines,
-                fastest_laptime,
-                fastest_optimal_time,
-                &best_splits_data,
+                fastest_laptime.unwrap(),
+                fastest_optimal_time.unwrap(),
+                overall_fastest_splits,
             );
-            Ok((display_track, display_lines))
+            Ok(TrackDisplayData {
+                name: display_track,
+                overall_optimal_laptime,
+                display_lines,
+            })
         })
-        .collect::<Result<DisplayData>>()
+        .collect::<Result<DisplayData>>()?;
+    display_data.sort_unstable_by_key(|track_data| {
+        -(track_data
+            .display_lines
+            .iter()
+            .map(|line| line.timestamp)
+            .max()
+            .unwrap_or(0))
+    });
+    Ok(display_data)
 }
 
 fn set_purple_and_green(
-    track: &str,
     display_lines: &mut Vec<DisplayLine>,
-    fastest_laptime: Option<Duration>,
-    fastest_optimal_time: Option<Duration>,
-    best_splits_data: &HashMap<(String, i64), Vec<Duration>>,
+    fastest_laptime: Duration,
+    fastest_optimal_time: Duration,
+    overall_fastest_splits: Vec<Duration>,
 ) {
-    let overall_best_splits = best_splits_data
-        .iter()
-        .filter_map(|(key, splits)| if key.0 == track { Some(splits) } else { None })
-        .fold(Vec::new(), |acc, splits| {
-            acc.into_iter()
-                .zip_longest(splits)
-                .map(|eitherorboth| match eitherorboth {
-                    EitherOrBoth::Both(a, b) => {
-                        if a < b {
-                            a
-                        } else {
-                            b
-                        }
-                    }
-                    EitherOrBoth::Left(a) => a,
-                    EitherOrBoth::Right(b) => b,
-                })
-                .collect()
-        });
     for display_line in display_lines {
-        if display_line.laptime.duration == fastest_laptime.unwrap() {
+        if display_line.laptime.duration == fastest_laptime {
             display_line.laptime.class = "purple";
         }
-        if display_line.optimal_laptime.duration == fastest_optimal_time.unwrap() {
+        if display_line.optimal_laptime.duration == fastest_optimal_time {
             display_line.optimal_laptime.class = "purple";
         }
-        for (split, personal_best_split, overall_best_split) in izip!(
+        for (split, personal_fastest_split, overall_fastest_split) in izip!(
             display_line.splits.iter_mut(),
             display_line.best_splits.iter_mut(),
-            overall_best_splits.iter()
+            overall_fastest_splits.iter()
         ) {
-            if split.duration == **overall_best_split {
+            if split.duration == *overall_fastest_split {
                 split.class = "purple";
-            } else if split.duration == personal_best_split.duration {
+            } else if split.duration == personal_fastest_split.duration {
                 split.class = "green";
             }
-            if personal_best_split.duration == **overall_best_split {
-                personal_best_split.class = "purple";
+            if personal_fastest_split.duration == *overall_fastest_split {
+                personal_fastest_split.class = "purple";
             }
         }
     }
@@ -379,7 +380,7 @@ async fn get_fastest_laps_data(conn: &mut SqliteConnection) -> Vec<FastestLapQue
     .unwrap()
 }
 
-async fn get_best_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), Vec<Duration>> {
+async fn get_fastest_splits(conn: &mut SqliteConnection) -> HashMap<(String, i64), Vec<Duration>> {
     sqlx::query!(
         r#"
         SELECT s.track as "track!",

@@ -174,15 +174,15 @@ pub fn bytes_to_json_string(bytes: &[u8]) -> Result<String> {
 
     // No BOM
     // Check for lots of BE NUL bytes
-    let (be_nuls, le_nuls) =
-        bytes
-            .chunks(2)
-            .fold((0_usize, 0_usize), |(be_nuls, le_nuls), chunk| match chunk {
-                [0, 0] => (be_nuls + 1, le_nuls + 1),
-                [0, _] => (be_nuls + 1, le_nuls),
-                [_, 0] => (be_nuls, le_nuls + 1),
-                _ => panic!("chunk size not 2?!"),
-            });
+    let (be_nuls, le_nuls) = bytes.chunks(2).fold(
+        (0_usize, 0_usize),
+        |(be_nuls, le_nuls), chunk| match chunk {
+            [0, 0] => (be_nuls + 1, le_nuls + 1),
+            [0, _] => (be_nuls + 1, le_nuls),
+            [_, 0] => (be_nuls, le_nuls + 1),
+            _ => panic!("chunk size not 2?!"),
+        },
+    );
     // Let's say if 45+% of the bytes are BE NULs, then it's probably UTF-16BE
     if be_nuls as f64 >= (0.45 * (bytes.len() as f64)) {
         if let Ok(text) = try_conversion(bytes, Encoding::Utf16Be) {
@@ -221,8 +221,13 @@ where
     let player_id = String::deserialize(deserializer)?;
     let mut chars = player_id.chars();
     if chars.next() != Some('S') {
-        return Err(serde::de::Error::custom(format!("Invalid player ID: {player_id}")));
+        return Err(serde::de::Error::custom(format!(
+            "Invalid player ID: {player_id}"
+        )));
     }
-    let steam_id = chars.collect::<String>().parse::<i64>().map_err(serde::de::Error::custom)?;
+    let steam_id = chars
+        .collect::<String>()
+        .parse::<i64>()
+        .map_err(serde::de::Error::custom)?;
     Ok(steam_id)
 }
