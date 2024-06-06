@@ -151,7 +151,7 @@ async fn get_display_data(state: State) -> Result<DisplayData> {
 
     let fastest_laps_data = get_fastest_laps_data(&mut conn).await;
 
-    let best_splits_data = get_fastest_splits(&mut conn).await;
+    let fastest_splits_data = get_fastest_splits(&mut conn).await;
 
     let laps_data = get_lap_counts(&mut conn).await;
 
@@ -165,6 +165,28 @@ async fn get_display_data(state: State) -> Result<DisplayData> {
             let mut fastest_laptime = None;
             let mut previous_laptime = None;
             let mut fastest_optimal_time = None;
+            let overall_fastest_splits = fastest_splits_data
+                .iter()
+                .filter_map(|((t, _), splits)| if *t == track { Some(splits) } else { None })
+                .fold(Vec::new(), |acc, splits| {
+                    acc.into_iter()
+                        .zip_longest(splits)
+                        .map(|eitherorboth| match eitherorboth {
+                            EitherOrBoth::Both(a, b) => {
+                                if a < *b {
+                                    a
+                                } else {
+                                    *b
+                                }
+                            }
+                            EitherOrBoth::Left(_) => {
+                                unreachable!("Accumulator should never have more values")
+                            }
+                                    EitherOrBoth::Right(b) => *b,
+                        })
+                        .collect()
+                });
+            let mut overall_optimal_laptime = overall_fastest_splits.iter().copied().sum();
             let mut display_lines: Vec<DisplayLine> = rows
                 .into_iter()
                 .group_by(|row| {
@@ -203,7 +225,7 @@ async fn get_display_data(state: State) -> Result<DisplayData> {
                                 Duration::from_millis(row.sector_time_ms.try_into().unwrap())
                             })
                             .collect::<Vec<_>>();
-                        let best_splits = best_splits_data.get(&(track.clone(), steam_id)).unwrap();
+                        let fastest_splits = fastest_splits_data.get(&(track.clone(), steam_id)).unwrap();
 
                         let laptime = Duration::from_millis(laptime_ms.try_into().unwrap());
                         // For a single lap, the splits added up can deviate by
@@ -211,11 +233,14 @@ async fn get_display_data(state: State) -> Result<DisplayData> {
                         // rounding errors. We'll just use the laptime as the
                         // optimal laptime if the splits are all from the
                         // current lap, to avoid the weird off by 1 value.
-                        let optimal_laptime = if &splits == best_splits {
+                        let optimal_laptime = if &splits == fastest_splits {
                             laptime
                         } else {
-                            best_splits.iter().sum()
+                            fastest_splits.iter().sum()
                         };
+                        if splits == overall_fastest_splits {
+                            overall_optimal_laptime = optimal_laptime;
+                        }
 
                         let gap = fastest_laptime.map(|fastest_lap| laptime - fastest_lap);
                         fastest_laptime = fastest_laptime.or(Some(laptime));
@@ -243,41 +268,19 @@ async fn get_display_data(state: State) -> Result<DisplayData> {
                             ballast_kg,
                             timestamp,
                             &splits,
-                            best_splits,
+                            fastest_splits,
                             *valid_laps,
                             *total_laps,
                         )
                     },
                 )
                 .collect();
-            let overall_fastest_splits = best_splits_data
-                .iter()
-                .filter_map(|((t, _), splits)| if *t == track { Some(splits) } else { None })
-                .fold(Vec::new(), |acc, splits| {
-                    acc.into_iter()
-                        .zip_longest(splits)
-                        .map(|eitherorboth| match eitherorboth {
-                            EitherOrBoth::Both(a, b) => {
-                                if a < *b {
-                                    a
-                                } else {
-                                    *b
-                                }
-                            }
-                            EitherOrBoth::Left(_) => {
-                                unreachable!("Accumulator should never have more values")
-                            }
-                                    EitherOrBoth::Right(b) => *b,
-                        })
-                        .collect()
-                });
-            let overall_optimal_laptime = overall_fastest_splits.iter().copied().sum();
             let overall_optimal_laptime = DurationWithClass::new(overall_optimal_laptime);
             set_purple_and_green(
                 &mut display_lines,
                 fastest_laptime.unwrap(),
                 fastest_optimal_time.unwrap(),
-                overall_fastest_splits,
+                &overall_fastest_splits,
             );
             Ok(TrackDisplayData {
                 name: display_track,
@@ -301,7 +304,7 @@ fn set_purple_and_green(
     display_lines: &mut Vec<DisplayLine>,
     fastest_laptime: Duration,
     fastest_optimal_time: Duration,
-    overall_fastest_splits: Vec<Duration>,
+    overall_fastest_splits: &[Duration],
 ) {
     for display_line in display_lines {
         if display_line.laptime.duration == fastest_laptime {
